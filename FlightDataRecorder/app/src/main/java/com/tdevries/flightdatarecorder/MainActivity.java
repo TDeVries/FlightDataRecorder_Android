@@ -84,6 +84,7 @@ public class MainActivity extends ActionBarActivity implements SensorEventListen
     private Button recordButton;
 
     final private String HEADER = "UTC Time (ms),Roll (deg),Pitch (deg),Azimuth (deg)," +
+            "G-Force X, G-Force Y, G-Force Z," +
             "Latitude,Longitude,Ground Speed (m/s),Altitude (m),Bearing (deg)";
     private String orientationData, locationData;
     private String orientationNumeric, locationNumeric;
@@ -224,8 +225,8 @@ public class MainActivity extends ActionBarActivity implements SensorEventListen
                     //Log.i("Text", orientationData + "\n" + locationData);
                     if (recording == true) {
                         try {
-                            long time= System.currentTimeMillis();
-                            dataForFile = Long.toString(time) + ',' + orientationNumeric + ',' + locationNumeric + '\n';
+                            String time = Long.toString(System.currentTimeMillis());
+                            dataForFile = time + ',' + orientationNumeric + ',' + locationNumeric + '\n';
                             outputStreamWriter.write(dataForFile);
                         } catch (IOException e) {
                             Log.e("Exception", "File write failed: " + e.toString());
@@ -457,12 +458,15 @@ public class MainActivity extends ActionBarActivity implements SensorEventListen
         int pitch = (int) Math.toDegrees((double) fusedOrientation[1]);
         int azimuth = (int) Math.toDegrees((double) fusedOrientation[0]);
 
-        //Multiply by 57.2957795 to convert from rad to degrees
-        orientationData = "Roll: " + roll +
-                "\nPitch: " + pitch +
-                "\nAzimuth: " + azimuth;
+        double gforceX = accel[0]/9.81;
+        double gforceY = accel[1]/9.81;
+        double gforceZ = accel[2]/9.81;
 
-        orientationNumeric = roll + "," + pitch + "," + azimuth;
+        orientationData = String.format( "Roll: %d \nPitch: %d \nAzimuth: %d \nG-Force X: %.1f \nG-Force Y: %.1f \nG-Force Z: %.1f",
+                roll, pitch, azimuth, gforceX, gforceY, gforceZ );
+
+        orientationNumeric = String.format( "%d,%d,%d,%.1f,%.1f,%.1f",
+                roll, pitch, azimuth, gforceX, gforceY, gforceZ);
 
         sensorText.setText(orientationData + "\n" + locationData);
 
