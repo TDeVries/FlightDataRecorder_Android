@@ -1,13 +1,13 @@
 /*
  * TODO
- * Add timestamp to recorded data
- * Add linear G-forces
  * Turn off GPS and IMU sensors onStop
 */
 
 package com.tdevries.flightdatarecorder;
 
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
@@ -20,11 +20,14 @@ import android.net.NetworkInfo;
 import android.os.SystemClock;
 import android.support.v7.app.ActionBarActivity;
 import android.os.Bundle;
+import android.text.InputType;
 import android.util.Log;
+import android.view.Gravity;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.widget.Button;
+import android.widget.EditText;
 import android.widget.TextView;
 
 import java.io.BufferedReader;
@@ -49,7 +52,7 @@ public class MainActivity extends ActionBarActivity implements SensorEventListen
 
     public static final int TIME_CONSTANT = 30; //30
     public static final float FILTER_COEFFICIENT = 0.98f; //0.98f
-    private Timer fuseTimer = new Timer();
+    private Timer fuseTimer;
 
     private SensorManager mSensorManager = null;
 
@@ -90,26 +93,55 @@ public class MainActivity extends ActionBarActivity implements SensorEventListen
     private String orientationNumeric, locationNumeric;
     private String dataForFile;
 
-    private Timer dataRecordTimer = new Timer();
+    private Timer dataRecordTimer;
     private TimerTask dataRecordTask;
 
-    public static final int RECORD_INTERVAL = 1000;
+    public int recordInterval = 1000;
     private boolean recording;
     private boolean fileReadyToTransfer;
     String filename = "dataFile1.txt";
     OutputStreamWriter outputStreamWriter;
 
-    public static final String SERVER_IP = "192.168.1.109";
+    public String serverIP = "192.168.1.109";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        initViews();
-        initSensors();
-        initRecording();
+        recording = false;
+        fileReadyToTransfer = false;
 
+        initViews();
+        initGPS();
+    }
+
+    @Override
+    protected void onStart(){
+        super.onStart();
+        //turn on everything that might be off
+        //this method also automatically gets called when the app is created (because recording is set to false)
+        if (!recording) {
+            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 0, 0, locationListener);
+            initIMU();
+            initRecording();
+            //Update roll, pitch, yaw.
+            fuseTimer = new Timer();
+            fuseTimer.scheduleAtFixedRate(new calculateFusedOrientationTask(), 1000, TIME_CONSTANT);
+        }
+    }
+
+    @Override
+    protected void onStop(){
+        super.onStop();
+
+        if (!recording){
+            //turn off all the listeners so that battery is saved
+            locationManager.removeUpdates(locationListener);
+            mSensorManager.unregisterListener(this);
+            fuseTimer.cancel();
+            dataRecordTimer.cancel();
+        }
     }
 
     @Override
@@ -132,7 +164,65 @@ public class MainActivity extends ActionBarActivity implements SensorEventListen
         int id = item.getItemId();
 
         //noinspection SimplifiableIfStatement
-        if (id == R.id.action_settings) {
+        if (id == R.id.setServerIP){
+            AlertDialog.Builder builder = new AlertDialog.Builder(this);
+            builder.setTitle("Set Server IP");
+            builder.setMessage("If the data server IP address has changed enter the new address below:\n");
+
+            // Set up the input
+            final EditText input = new EditText(this);
+            input.setText(serverIP);
+            input.setGravity(Gravity.CENTER_HORIZONTAL);
+            input.setInputType(InputType.TYPE_CLASS_TEXT);
+            builder.setView(input);
+
+            // Set up the buttons
+            builder.setPositiveButton("Okay", new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    serverIP = input.getText().toString();
+                }
+            });
+            builder.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    dialog.cancel();
+                }
+            });
+
+            builder.show();
+            return true;
+        }
+        else if (id == R.id.setRecordInterval){
+            AlertDialog.Builder builder = new AlertDialog.Builder(this);
+            builder.setTitle("Set Record Interval");
+            builder.setMessage("Enter the interval between recordings (in ms):\n");
+
+            // Set up the input
+            final EditText input = new EditText(this);
+            input.setText(String.valueOf(recordInterval));
+            input.setGravity(Gravity.CENTER_HORIZONTAL);
+            input.setInputType(InputType.TYPE_CLASS_TEXT);
+            builder.setView(input);
+
+            // Set up the buttons
+            builder.setPositiveButton("Okay", new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    recordInterval = Integer.parseInt(input.getText().toString());
+                    //cancel old record timer and initialize a new one
+                    dataRecordTimer.cancel();
+                    initRecording();
+                }
+            });
+            builder.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    dialog.cancel();
+                }
+            });
+
+            builder.show();
             return true;
         }
 
@@ -142,17 +232,6 @@ public class MainActivity extends ActionBarActivity implements SensorEventListen
     public void initViews() {
         sensorText = (TextView) findViewById(R.id.sensorText);
         recordButton = (Button) findViewById(R.id.recordButton);
-    }
-
-    public void initSensors() {
-        recording = false;
-        fileReadyToTransfer = false;
-
-        initIMU();
-        initGPS();
-
-        //Update roll, pitch, yaw at 33Hz.
-        fuseTimer.scheduleAtFixedRate(new calculateFusedOrientationTask(), 1000, TIME_CONSTANT);
     }
 
     public void initIMU() {
@@ -217,7 +296,7 @@ public class MainActivity extends ActionBarActivity implements SensorEventListen
     }
 
     public void initRecording() {
-
+        dataRecordTimer = new Timer();
         try {
             dataRecordTask = new TimerTask() {
                 @Override
@@ -232,7 +311,7 @@ public class MainActivity extends ActionBarActivity implements SensorEventListen
                             Log.e("Exception", "File write failed: " + e.toString());
                         }
                     }
-                    if (fileReadyToTransfer == true){
+                    else if (fileReadyToTransfer == true){
                         ConnectivityManager connManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
                         NetworkInfo mWifi = connManager.getNetworkInfo(ConnectivityManager.TYPE_WIFI);
 
@@ -245,7 +324,7 @@ public class MainActivity extends ActionBarActivity implements SensorEventListen
                 }
             };
             //Initially wait 1 second, then run every RECORD_INTERVAL milliseconds after that
-            dataRecordTimer.schedule(dataRecordTask, 1000, RECORD_INTERVAL);
+            dataRecordTimer.schedule(dataRecordTask, 1000, recordInterval);
         } catch (IllegalStateException e) {
             android.util.Log.i("Damn", "resume error");
         }
@@ -277,8 +356,6 @@ public class MainActivity extends ActionBarActivity implements SensorEventListen
 
     private void readFromFile() {
 
-        String ret = "";
-
         try {
             InputStream inputStream = openFileInput(filename);
 
@@ -286,18 +363,32 @@ public class MainActivity extends ActionBarActivity implements SensorEventListen
                 InputStreamReader inputStreamReader = new InputStreamReader(inputStream);
                 BufferedReader bufferedReader = new BufferedReader(inputStreamReader);
                 String receiveString = "";
-                StringBuilder stringBuilder = new StringBuilder();
 
-                stringBuilder.append(HEADER + "\n");
+                //http://www.roman10.net/android-tcp-client-and-server-communication-programmingillustrated-with-example/
+                try {
+                    Socket s = new Socket(serverIP, 5000);
+                    BufferedReader in = new BufferedReader(new InputStreamReader(s.getInputStream()));
+                    BufferedWriter out = new BufferedWriter(new OutputStreamWriter(s.getOutputStream()));
 
-                while ((receiveString = bufferedReader.readLine()) != null) {
-                    stringBuilder.append(receiveString).append("\n");
-                    Log.i("File output", receiveString);
+                    //send output msg
+                    out.write(HEADER + "\n");
+                    out.flush();
+
+                    while ((receiveString = bufferedReader.readLine()) != null) {
+                        out.write(receiveString + "\n");
+                        out.flush();
+                        Log.i("File output", receiveString);
+                    }
+
+                    //close connection
+                    s.close();
+                } catch (UnknownHostException e) {
+                    e.printStackTrace();
+                } catch (IOException e) {
+                    e.printStackTrace();
                 }
 
                 inputStream.close();
-                ret = stringBuilder.toString();
-                sendToServer(ret);
             }
         } catch (FileNotFoundException e) {
             Log.e("login activity", "File not found: " + e.toString());
@@ -517,25 +608,6 @@ public class MainActivity extends ActionBarActivity implements SensorEventListen
         }
     }
 
-    //http://www.roman10.net/android-tcp-client-and-server-communication-programmingillustrated-with-example/
-    private void sendToServer(String outMessage) {
-        try {
-            Socket s = new Socket(SERVER_IP, 5000);
-            BufferedReader in = new BufferedReader(new InputStreamReader(s.getInputStream()));
-            BufferedWriter out = new BufferedWriter(new OutputStreamWriter(s.getOutputStream()));
-            //send output msg
-            String outMsg = outMessage + System.getProperty("line.separator");
-            out.write(outMsg);
-            out.flush();
-            Log.i("TcpClient", "sent: " + outMsg);
-            //close connection
-            s.close();
-        } catch (UnknownHostException e) {
-            e.printStackTrace();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
 }
 
 

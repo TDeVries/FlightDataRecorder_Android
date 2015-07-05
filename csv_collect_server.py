@@ -40,7 +40,7 @@ def clientthread(conn):
             print "Disconnecting from client."
             break
         else:
-            file.write(data + "\n")
+            file.write(data)
             print data
         
     conn.close()
