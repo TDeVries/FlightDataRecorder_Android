@@ -102,7 +102,7 @@ public class MainActivity extends ActionBarActivity implements SensorEventListen
     String filename = "dataFile1.txt";
     OutputStreamWriter outputStreamWriter;
 
-    public String serverIP = "192.168.1.109";
+    public String serverIP = "192.168.2.34";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -225,6 +225,38 @@ public class MainActivity extends ActionBarActivity implements SensorEventListen
             builder.show();
             return true;
         }
+        else if (id == R.id.about){
+            AlertDialog.Builder builder = new AlertDialog.Builder(this);
+            builder.setTitle("About");
+
+            int versionCode = BuildConfig.VERSION_CODE;
+            String versionName = BuildConfig.VERSION_NAME;
+
+            String aboutInfo = "\nCreated by: Terrance DeVries\n" +
+                               "                   Colin Brennan   \n" +
+                               "                 Phi Duong       \n" +
+                               "               Amit Tah        \n\n" +
+                               "App Version: " + versionName;
+                               //"Version Code: " + String.valueOf(versionCode);
+
+            // Set up the input
+            final TextView aboutText = new TextView(this);
+            aboutText.setText(aboutInfo);
+            aboutText.setGravity(Gravity.CENTER_HORIZONTAL);
+            builder.setView(aboutText);
+
+            // Set up the buttons
+            builder.setNegativeButton("Okay", new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    dialog.cancel();
+                }
+            });
+
+            builder.show();
+            return true;
+        }
+
 
         return super.onOptionsItemSelected(item);
     }
@@ -553,10 +585,10 @@ public class MainActivity extends ActionBarActivity implements SensorEventListen
         double gforceY = accel[1]/9.81;
         double gforceZ = accel[2]/9.81;
 
-        orientationData = String.format( "Roll: %d \nPitch: %d \nAzimuth: %d \nG-Force X: %.1f \nG-Force Y: %.1f \nG-Force Z: %.1f",
+        orientationData = String.format( "Roll: %d \nPitch: %d \nAzimuth: %d \nG-Force X: %.2f \nG-Force Y: %.2f \nG-Force Z: %.2f",
                 roll, pitch, azimuth, gforceX, gforceY, gforceZ );
 
-        orientationNumeric = String.format( "%d,%d,%d,%.1f,%.1f,%.1f",
+        orientationNumeric = String.format( "%d,%d,%d,%.2f,%.2f,%.2f",
                 roll, pitch, azimuth, gforceX, gforceY, gforceZ);
 
         sensorText.setText(orientationData + "\n" + locationData);
